@@ -5,6 +5,7 @@ from starkware.cairo.common.registers import get_fp_and_pc
 from starkware.cairo.common.math import unsigned_div_rem
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.hash import hash2
+from starkware.cairo.common.dict import dict_update
 
 const MAX_BALANCE = 2 ** 64 - 1
 
@@ -125,4 +126,46 @@ func transaction_a_loop{range_check_ptr}(
     let (state) = swap_to_get_token_a(state=state, transaction=transaction)
 
     return transaction_a_loop(state=state,transactions=transactions + 1, n_transactions=n_transactions - 1)
+end
+
+func hash_account{pedersen_ptr : HashBuiltin*}(
+    account : Account*
+) -> (res : felt):
+    let res = account.public_key
+    let (res) = hash2{hash_ptr=pedersen_ptr}(
+        res, account.token_a_balance
+    )
+      let (res) = hash2{hash_ptr=pedersen_ptr}(
+        res, account.token_b_balance
+    )
+    return (res=res)
+end
+
+func hash_dict_values{pedersen_ptr : HashBuiltin*}(
+    dict_start : DictAccess*,
+    dict_end : DictAccess*,
+    hash_dict_start : DictAccess*
+) -> (hash_dict_end : DictAccess*):
+    if dict_start == dict_end:
+        return (hash_dict_end=hash_dict_start)        
+    end
+    let (prev_hash) = hash_account(
+        account=cast(dict_start.prev_value, Account*)
+    )
+    let (new_hash) = hash_account(
+        account=cast(dict_start.new_value, Account*)
+    )
+
+    dict_update{dict_ptr=hash_dict_start}(
+        key=dict_start.key,
+        prev_value=prev_hash,
+        new_value=new_hash
+    )
+
+    return hash_dict_values(
+                dict_start=dict_start + DictAccess.SIZE,
+                dict_end=dict_end,
+                hash_dict_start=hash_dict_start
+           )
+
 end
