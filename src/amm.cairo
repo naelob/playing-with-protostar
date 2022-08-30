@@ -247,3 +247,21 @@ func get_transactions_a()-> (transactions_a : SwapTransactionB**, n_transactions
     return (transactions_a, n_transactions)
 end
 
+func get_account_dict()-> (account_dict : DictAccess*):
+    alloc_locals
+    %{
+        account = program_input['accounts']
+        initial_dict = {
+            int(account_id_str): segements.gen_arg([
+                int(info['public_key'], 16),
+                info['token_a_balance'],
+                info['token_b_balance'],
+            ])
+            for account_id_str, info in account.items()
+        }
+        initial_account_dict = dict(initial_dict)
+    %}
+    let (local account_dict : DictAccess*) = dict_new()
+
+    return (account_dict)
+end
