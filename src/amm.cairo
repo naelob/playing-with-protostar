@@ -3,6 +3,8 @@ from starkware.cairo.common.dict import dict_read, dict_write
 from starkware.cairo.common.math import assert_nn_le
 from starkware.cairo.common.registers import get_fp_and_pc
 from starkware.cairo.common.math import unsigned_div_rem
+from starkware.cairo.common.cairo_builtins import HashBuiltin
+from starkware.cairo.common.hash import hash2
 
 const MAX_BALANCE = 2 ** 64 - 1
 
@@ -99,4 +101,28 @@ func swap_to_get_token_a{range_check_ptr}(
 
     let (state, key) = modify_account(state, transaction.account_id, amount_a, -b )
     return (state=state)
+end
+
+func transaction_b_loop{range_check_ptr}(
+    state : AmmState, transactions : SwapTransactionA**, n_transactions : felt
+) -> (state : AmmState):
+    if n_transactions == 0:
+        return (state=state)
+    end
+    let transaction : SwapTransactionA* = [transactions]
+    let (state) = swap_to_get_token_b(state=state, transaction=transaction)
+
+    return transaction_b_loop(state=state,transactions=transactions + 1, n_transactions=n_transactions - 1)
+end
+
+func transaction_a_loop{range_check_ptr}(
+    state : AmmState, transactions : SwapTransactionB**, n_transactions : felt
+) -> (state : AmmState):
+    if n_transactions == 0:
+        return (state=state)
+    end
+    let transaction : SwapTransactionB* = [transactions]
+    let (state) = swap_to_get_token_a(state=state, transaction=transaction)
+
+    return transaction_a_loop(state=state,transactions=transactions + 1, n_transactions=n_transactions - 1)
 end
