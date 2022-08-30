@@ -6,8 +6,13 @@ from starkware.cairo.common.math import unsigned_div_rem
 from starkware.cairo.common.cairo_builtins import HashBuiltin
 from starkware.cairo.common.hash import hash2
 from starkware.cairo.common.dict import dict_update
+from starkware.cairo.common.dict import dict_new, dict_squash
+from starkware.cairo.common.small_merkle_tree import (
+    small_merkle_tree_update,
+)
 
 const MAX_BALANCE = 2 ** 64 - 1
+const LOG_N_ACCOUNTS = 10
 
 
 struct Account:
@@ -169,3 +174,76 @@ func hash_dict_values{pedersen_ptr : HashBuiltin*}(
            )
 
 end
+
+func compute_merkle_roots{pedersen_ptr : HashBuiltin*, range_check_ptr}(
+    state : AmmState
+) -> (root_before : felt, root_after : felt):
+    alloc_locals
+
+    # Squash the account dictionary.
+    let (squashed_dict_start, squashed_dict_end) = dict_squash(
+        dict_accesses_start=state.account_dict_start,
+        dict_accesses_end=state.account_dict_end,
+    )
+    # Hash the dict values.
+    %{
+        from starkware.crypto.signature.signature import pedersen_hash
+        initial_dict = {}
+        for account_id, account in initial_account_dict.items():
+            public_key = memory[account + ids.Account.public_key]
+            token_a_balance = memory[account + ids.Account.token_a_balance]
+            token_b_balance = memory[account + ids.Account.token_b_balance]
+            initial_dict[account_id] = pedersen_hash(
+                pedersen_hash(public_key, token_a_balance),
+                token_b_balance)
+    %}
+    let (local hash_dict_start : DictAccess*) = dict_new()
+    let (hash_dict_end) = hash_dict_values(
+        dict_start=squashed_dict_start,
+        dict_end=squashed_dict_end,
+        hash_dict_start=hash_dict_start
+    )
+
+    let (root_before, root_after) = small_merkle_tree_update{
+        hash_ptr=pedersen_ptr
+    }(
+        squashed_dict_start=squashed_dict_start,
+        squashed_dict_end=squashed_dict_end,
+        height=LOG_N_ACCOUNTS
+    )
+    return (root_before=root_before, root_after=root_after)
+
+end
+
+func get_transactions_b()-> (transactions_b : SwapTransactionA**, n_transactions : felt):
+    alloc_locals
+    local transactions_b : SwapTransactionA**
+    local n_transactions : felt
+    %{
+       transactions_b = [ [ transaction_b['account_id'], 
+                          transaction_b['token_a_amount']
+                        ] 
+                        for transaction_b in program_input['transactions_b']
+                    ]
+        ids.transactions_b = segments.gen_arg(transactions_b)
+        ids.n_transactions = len(transactions_b)
+    %}
+    return (transactions_b, n_transactions)
+end
+
+func get_transactions_a()-> (transactions_a : SwapTransactionB**, n_transactions : felt):
+    alloc_locals
+    local transactions_a : SwapTransactionB**
+    local n_transactions : felt
+    %{
+       transactions_a = [ [ transaction_a['account_id'], 
+                          transaction_a['token_b_amount']
+                        ] 
+                        for transaction_a in program_input['transactions_a']
+                    ]
+        ids.transactions_a = segments.gen_arg(transactions_a)
+        ids.n_transactions = len(transactions_a)
+    %}
+    return (transactions_a, n_transactions)
+end
+
