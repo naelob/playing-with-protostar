@@ -1,3 +1,5 @@
+%builtins output pedersen range_check
+
 from starkware.cairo.common.dict_access import DictAccess
 from starkware.cairo.common.dict import dict_read, dict_write
 from starkware.cairo.common.math import assert_nn_le
@@ -30,6 +32,22 @@ struct AmmState:
     member token_a_balance : felt
     member token_b_balance : felt 
 end
+
+
+# The output of the AMM program.
+struct AmmBatchOutput:
+    # The balances of the AMM before applying the batch.
+    member token_a_before : felt
+    member token_b_before : felt
+    # The balances of the AMM after applying the batch.
+    member token_a_after : felt
+    member token_b_after : felt
+    # The account Merkle roots before and after applying
+    # the batch.
+    member account_root_before : felt
+    member account_root_after : felt
+end
+
 struct SwapTransactionA:
     member account_id : felt
     member token_a_amount : felt
@@ -264,4 +282,36 @@ func get_account_dict()-> (account_dict : DictAccess*):
     let (local account_dict : DictAccess*) = dict_new()
 
     return (account_dict)
+end
+
+func main{
+    output_ptr : felt*,
+    pedersen_ptr : HashBuiltin*,
+    range_check_ptr,
+}():
+    alloc_locals
+    local state : AmmState
+    %{
+        ids.state.token_a_balance = program_input['token_a_balance']
+        ids.state.token_b_balance = program_input['token_b_balance']
+    %}
+    let (account_dict) = get_account_dict()
+    assert state.account_dict_start = account_dict
+    assert state.account_dict_end= account_dict
+
+    let output = cast(output_ptr, AmmBatchOutput*)
+    let output_ptr = output_ptr + AmmBatchOutput.SIZE
+
+    assert output.token_a_before = state.token_a_balance
+    assert output.token_b_before = state.token_b_balance
+
+    # Write the Merkle roots to the output.
+    let (root_before, root_after) = compute_merkle_roots(
+        state=state
+    )
+
+    assert output.account_root_before = root_before
+    assert output.account_root_after = root_after
+    
+    return ()
 end
